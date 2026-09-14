@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#261c16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Brew Dialer">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+  <title>Coffee Brew Dialer</title>
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Coffee Brew Dialer</h1>
+    <p>豆・器具・好み・実測から、次の一杯を1変数ずつ調整</p>
+  </div>
+  <span class="version">v0.1</span>
+</header>
+
+<main>
+  <section class="card hero">
+    <div class="hero-row">
+      <div>
+        <p class="eyebrow">基準レシピ</p>
+        <h2 id="baselineTitle">深煎りコロンビア × ロクサン</h2>
+      </div>
+      <button id="loadBaseline" class="secondary">基準を読み込む</button>
+    </div>
+    <div class="stats" id="baselineStats"></div>
+    <p class="note">このアプリは「一般的な比率」だけで決めず、実際においしかった条件を基準にダイヤルインします。</p>
+  </section>
+
+  <nav class="tabs" aria-label="画面切替">
+    <button class="tab active" data-tab="setup">レシピ</button>
+    <button class="tab" data-tab="timer">タイマー</button>
+    <button class="tab" data-tab="review">評価</button>
+    <button class="tab" data-tab="history">履歴</button>
+  </nav>
+
+  <section id="setup" class="tabpage active">
+    <section class="card">
+      <h2>1. 豆と器具</h2>
+      <div class="grid two">
+        <label>豆の名前<input id="beanName" type="text" value="コロンビア"></label>
+        <label>焙煎度<select id="roast"></select></label>
+        <label>抽出器具<select id="brewer"></select></label>
+        <label>グラインダー<select id="grinder"></select></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2. 現在のレシピ</h2>
+      <div class="grid three">
+        <label>豆量 (g)<input id="dose" type="number" min="4" max="60" step="0.5"></label>
+        <label>湯量 (g)<input id="water" type="number" min="50" max="1000" step="5"></label>
+        <label>湯温 (℃)<input id="temp" type="number" min="70" max="100" step="1"></label>
+        <label>挽き目<input id="grind" type="number" min="1" max="60" step="1"></label>
+        <label>注ぎ終わり<input id="pourEnd" type="time" step="1"></label>
+        <label>落ち切り<input id="drawdown" type="time" step="1"></label>
+      </div>
+      <div class="ratio-row"><span>抽出比率</span><strong id="ratioText">1:26.0</strong></div>
+      <p id="grindHint" class="hint"></p>
+    </section>
+
+    <section class="card">
+      <h2>3. 好み</h2>
+      <p class="sub">「多いほど欲しい」です。現在の好みを保存して提案に反映します。</p>
+      <div id="preferenceControls" class="sliders"></div>
+      <button id="savePrefs" class="secondary full">好みを保存</button>
+    </section>
+
+    <section class="card recommendation">
+      <div class="hero-row">
+        <div>
+          <p class="eyebrow">次のテスト</p>
+          <h2 id="recommendTitle">まずは現状維持</h2>
+        </div>
+        <button id="applyRecommendation" class="primary">提案を反映</button>
+      </div>
+      <p id="recommendBody"></p>
+      <div id="recommendDiff" class="diff"></div>
+      <details>
+        <summary>なぜこの提案？</summary>
+        <p id="recommendReason"></p>
+      </details>
+    </section>
+  </section>
+
+  <section id="timer" class="tabpage">
+    <section class="card timer-card">
+      <div class="timer-main" id="timerDisplay">0:00.0</div>
+      <div class="timer-target" id="timerTarget">準備できたら開始</div>
+      <div class="buttons">
+        <button id="startTimer" class="primary">開始</button>
+        <button id="pauseTimer" class="secondary">一時停止</button>
+        <button id="resetTimer" class="secondary">リセット</button>
+      </div>
+      <div class="progress"><div id="timerProgress"></div></div>
+    </section>
+
+    <section class="card">
+      <div class="hero-row">
+        <h2>注湯ステップ</h2>
+        <button id="resetSteps" class="secondary">標準に戻す</button>
+      </div>
+      <div id="stepsEditor"></div>
+      <button id="addStep" class="secondary full">＋ ステップ追加</button>
+      <p class="hint">工程の数秒前と工程開始時に音で知らせます。iPhoneでは消音設定やブラウザ制限により音が出ない場合があります。</p>
+    </section>
+  </section>
+
+  <section id="review" class="tabpage">
+    <section class="card">
+      <h2>今回の実測</h2>
+      <div class="grid two">
+        <label>注ぎ終わり<input id="actualPourEnd" type="time" step="1"></label>
+        <label>落ち切り<input id="actualDrawdown" type="time" step="1"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>味を評価</h2>
+      <div id="tasteControls" class="sliders"></div>
+      <label>総合評価<select id="overall"><option value="5">★★★★★ とても良い</option><option value="4" selected>★★★★☆ 良い</option><option value="3">★★★☆☆ 普通</option><option value="2">★★☆☆☆ いまひとつ</option><option value="1">★☆☆☆☆ 合わない</option></select></label>
+      <label>メモ<textarea id="memo" placeholder="例：苦味は弱くなった。香りをもう少し出したい。"></textarea></label>
+      <button id="saveBrew" class="primary full">今回の一杯を保存</button>
+    </section>
+
+    <section class="card recommendation">
+      <p class="eyebrow">評価からの次回提案</p>
+      <h2 id="reviewAdviceTitle">評価を入力してください</h2>
+      <p id="reviewAdviceBody">保存すると、原則1変数だけ変更する次回案を作ります。</p>
+    </section>
+  </section>
+
+  <section id="history" class="tabpage">
+    <section class="card">
+      <div class="hero-row">
+        <div>
+          <h2>抽出履歴</h2>
+          <p class="sub">端末内に保存されます。</p>
+        </div>
+        <button id="clearHistory" class="danger">履歴削除</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+  </section>
+</main>
+
+<footer>データはこの端末のブラウザ内に保存されます。</footer>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
