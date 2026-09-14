@@ -1,0 +1,14 @@
+{
+  "name":"Coffee Brew Dialer",
+  "short_name":"Brew Dialer",
+  "description":"豆・器具・好み・実測時間からコーヒーレシピをダイヤルインするPWA",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#f5f0ea",
+  "theme_color":"#261c16",
+  "lang":"ja",
+  "icons":[
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
