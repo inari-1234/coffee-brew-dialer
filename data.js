@@ -36,12 +36,9 @@ window.COFFEE_DATA = {
     beanName:'コロンビア',roast:'dark',brewer:'63metal',grinder:'c5pro',
     dose:10,water:260,temp:93,grind:25,pourEnd:120,drawdown:138,
     steps:[
-      {time:0,label:'蒸らし',target:'35gまで'},
-      {time:30,label:'2投目',target:'100gまで'},
-      {time:60,label:'3投目',target:'160gまで'},
-      {time:90,label:'4投目',target:'220gまで'},
-      {time:110,label:'最終注湯',target:'260gまで'},
-      {time:120,label:'注ぎ終わり',target:'注湯停止'},
+      {time:0,label:'蒸らし',target:'30〜40gを目安に全体を濡らす'},
+      {time:30,label:'本抽出',target:'260gまで数回に分けて注ぐ'},
+      {time:120,label:'注ぎ終わり',target:'260g・注湯停止'},
       {time:138,label:'落ち切り目安',target:'ドリッパーを外す'}
     ]
   }

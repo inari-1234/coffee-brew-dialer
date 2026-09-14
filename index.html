@@ -58,8 +58,8 @@
         <label>湯量 (g)<input id="water" type="number" min="50" max="1000" step="5"></label>
         <label>湯温 (℃)<input id="temp" type="number" min="70" max="100" step="1"></label>
         <label>挽き目<input id="grind" type="number" min="1" max="60" step="1"></label>
-        <label>注ぎ終わり<input id="pourEnd" type="time" step="1"></label>
-        <label>落ち切り<input id="drawdown" type="time" step="1"></label>
+        <label>注ぎ終わり<input id="pourEnd" type="text" inputmode="numeric" placeholder="2:00"></label>
+        <label>落ち切り<input id="drawdown" type="text" inputmode="numeric" placeholder="2:18"></label>
       </div>
       <div class="ratio-row"><span>抽出比率</span><strong id="ratioText">1:26.0</strong></div>
       <p id="grindHint" class="hint"></p>
@@ -116,8 +116,8 @@
     <section class="card">
       <h2>今回の実測</h2>
       <div class="grid two">
-        <label>注ぎ終わり<input id="actualPourEnd" type="time" step="1"></label>
-        <label>落ち切り<input id="actualDrawdown" type="time" step="1"></label>
+        <label>注ぎ終わり<input id="actualPourEnd" type="text" inputmode="numeric" placeholder="2:00"></label>
+        <label>落ち切り<input id="actualDrawdown" type="text" inputmode="numeric" placeholder="2:18"></label>
       </div>
     </section>
 
