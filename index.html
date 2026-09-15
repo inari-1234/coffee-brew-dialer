@@ -17,7 +17,7 @@
     <h1>Coffee Brew Dialer</h1>
     <p>豆・器具・好み・実測から、次の一杯を1変数ずつ調整</p>
   </div>
-  <span class="version">v0.1</span>
+  <span class="version">v0.2</span>
 </header>
 
 <main>
@@ -27,10 +27,11 @@
         <p class="eyebrow">基準レシピ</p>
         <h2 id="baselineTitle">深煎りコロンビア × ロクサン</h2>
       </div>
-      <button id="loadBaseline" class="secondary">基準を読み込む</button>
+      <button id="loadBaseline" class="secondary">この基準を読み込む</button>
     </div>
+    <label>基準を選択<select id="baselineSelect"></select></label>
     <div class="stats" id="baselineStats"></div>
-    <p class="note">このアプリは「一般的な比率」だけで決めず、実際においしかった条件を基準にダイヤルインします。</p>
+    <p id="baselineNote" class="note"></p>
   </section>
 
   <nav class="tabs" aria-label="画面切替">
@@ -104,7 +105,7 @@
     <section class="card">
       <div class="hero-row">
         <h2>注湯ステップ</h2>
-        <button id="resetSteps" class="secondary">標準に戻す</button>
+        <button id="resetSteps" class="secondary">選択中の基準に戻す</button>
       </div>
       <div id="stepsEditor"></div>
       <button id="addStep" class="secondary full">＋ ステップ追加</button>
