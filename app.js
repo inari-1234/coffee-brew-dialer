@@ -2,9 +2,16 @@
   const D = window.COFFEE_DATA;
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
-  const LS = {prefs:'coffeeDialer:prefs',history:'coffeeDialer:history',steps:'coffeeDialer:steps',recipe:'coffeeDialer:recipe'};
+  const LS = {prefs:'coffeeDialer:prefs',history:'coffeeDialer:history',steps:'coffeeDialer:steps',recipe:'coffeeDialer:recipe',preset:'coffeeDialer:preset'};
   const clone = obj => JSON.parse(JSON.stringify(obj));
-  const state = {recipe:clone(D.baseline),steps:clone(D.baseline.steps),recommendation:null,timer:{running:false,startAt:0,elapsed:0,raf:0,lastCue:-1}};
+  const presets = D.presets?.length ? D.presets : [{id:'baseline',label:'基準レシピ',...D.baseline}];
+  const state = {
+    activePresetId:localStorage.getItem(LS.preset)||presets[0].id,
+    recipe:clone(D.baseline),
+    steps:clone(D.baseline.steps),
+    recommendation:null,
+    timer:{running:false,startAt:0,elapsed:0,raf:0,lastCue:-1}
+  };
 
   const secToClock = sec => {
     sec = Math.max(0,Math.round(Number(sec)||0));
@@ -23,6 +30,11 @@
   };
   const safeNum=(v,fallback)=>Number.isFinite(Number(v))?Number(v):fallback;
 
+  function currentPreset(){
+    const id=$('#baselineSelect')?.value||state.activePresetId;
+    return presets.find(x=>x.id===id)||presets[0];
+  }
+
   function initSelect(sel, items, selected){
     sel.innerHTML=items.map(x=>`<option value="${x.id}" ${x.id===selected?'selected':''}>${x.label}</option>`).join('');
   }
@@ -31,9 +43,14 @@
   function loadSavedRecipe(){ try{return JSON.parse(localStorage.getItem(LS.recipe)||'null')}catch{return null} }
   function loadSavedSteps(){ try{return JSON.parse(localStorage.getItem(LS.steps)||'null')}catch{return null} }
 
-  function renderBaseline(){
-    const b=D.baseline;
-    $('#baselineStats').innerHTML=[['豆',`${b.dose}g`],['湯',`${b.water}g`],['C5 Pro',`${b.grind}`],['実測',`${fmt(b.drawdown)}`]].map(([k,v])=>`<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  function renderBaseline(presetId=state.activePresetId){
+    const b=presets.find(x=>x.id===presetId)||presets[0];
+    state.activePresetId=b.id;
+    localStorage.setItem(LS.preset,b.id);
+    $('#baselineSelect').value=b.id;
+    $('#baselineTitle').textContent=b.label;
+    $('#baselineStats').innerHTML=[['豆',`${b.dose}g`],['湯',`${b.water}g`],['C5 Pro',`${b.grind}`],['目安',`${fmt(b.drawdown)}`]].map(([k,v])=>`<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+    $('#baselineNote').textContent=b.note||'この条件を出発点に、実際の味から1変数ずつ調整します。';
   }
 
   function renderPreferences(){
@@ -55,13 +72,27 @@
     };
   }
 
+  function syncReviewTimes(){
+    $('#actualPourEnd').value=secToClock(state.recipe.pourEnd);
+    $('#actualDrawdown').value=secToClock(state.recipe.drawdown);
+  }
+
   function applyRecipe(r, save=true){
     state.recipe={...state.recipe,...r};
     $('#beanName').value=state.recipe.beanName; $('#roast').value=state.recipe.roast; $('#brewer').value=state.recipe.brewer; $('#grinder').value=state.recipe.grinder;
     $('#dose').value=state.recipe.dose; $('#water').value=state.recipe.water; $('#temp').value=state.recipe.temp; $('#grind').value=state.recipe.grind;
     $('#pourEnd').value=secToClock(state.recipe.pourEnd); $('#drawdown').value=secToClock(state.recipe.drawdown);
     if(save) localStorage.setItem(LS.recipe,JSON.stringify(state.recipe));
-    updateComputed(); updateRecommendation();
+    updateComputed(); updateRecommendation(); syncReviewTimes();
+  }
+
+  function loadPreset(preset){
+    state.activePresetId=preset.id;
+    localStorage.setItem(LS.preset,preset.id);
+    renderBaseline(preset.id);
+    applyRecipe(clone(preset));
+    state.steps=clone(preset.steps||[]);
+    saveSteps(); renderSteps(); resetTimer();
   }
 
   function updateComputed(){
@@ -105,7 +136,8 @@
     if(!state.timer.running)return;
     const elapsed=state.timer.elapsed+(now-state.timer.startAt)/1000;
     $('#timerDisplay').textContent=fmt(elapsed);
-    const total=Math.max(...state.steps.map(x=>x.time),readRecipe().drawdown||1,1);
+    const stepTimes=state.steps.map(x=>x.time);
+    const total=Math.max(...stepTimes,readRecipe().drawdown||1,1);
     $('#timerProgress').style.width=`${Math.min(100,elapsed/total*100)}%`;
     const next=state.steps.find(s=>s.time>elapsed);
     const current=[...state.steps].reverse().find(s=>s.time<=elapsed);
@@ -145,7 +177,7 @@
     const r=readRecipe(); const taste=Object.fromEntries($$('[data-taste]').map(x=>[x.dataset.taste,Number(x.value)]));
     const actualPour=clockToSec($('#actualPourEnd').value)||r.pourEnd; const actualDraw=clockToSec($('#actualDrawdown').value)||r.drawdown;
     const advice=adviceFromTaste(taste,actualDraw);
-    const item={id:Date.now(),at:new Date().toISOString(),recipe:r,actualPourEnd:actualPour,actualDrawdown:actualDraw,taste,overall:Number($('#overall').value),memo:$('#memo').value.trim(),advice};
+    const item={id:Date.now(),at:new Date().toISOString(),presetId:state.activePresetId,recipe:r,actualPourEnd:actualPour,actualDrawdown:actualDraw,taste,overall:Number($('#overall').value),memo:$('#memo').value.trim(),advice};
     const h=loadHistory();h.unshift(item);localStorage.setItem(LS.history,JSON.stringify(h.slice(0,100)));
     $('#reviewAdviceTitle').textContent=advice.title;$('#reviewAdviceBody').textContent=advice.body; renderHistory();
   }
@@ -155,18 +187,20 @@
     if(!h.length){$('#historyList').innerHTML='<div class="empty">まだ履歴がありません。</div>';return;}
     $('#historyList').innerHTML=h.map(x=>{
       const d=new Date(x.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-      return `<div class="history-item"><div class="history-top"><div><div class="history-title">${x.recipe.beanName} / ${x.recipe.dose}g : ${x.recipe.water}g</div><div class="history-meta">C5 Pro ${x.recipe.grind}・${x.recipe.temp}℃・落ち切り ${fmt(x.actualDrawdown)}</div></div><div class="score">${'★'.repeat(x.overall)}${'☆'.repeat(5-x.overall)}</div></div><div class="history-meta">苦味${x.taste.bitterness} / 酸味${x.taste.acidity} / 甘さ${x.taste.sweetness} / コク${x.taste.body} / 香り${x.taste.aroma}<br>${d}${x.memo?`・${x.memo}`:''}<br><b>次回:</b> ${x.advice.title}</div></div>`;
+      const brewer=D.brewers.find(b=>b.id===x.recipe.brewer)?.label||x.recipe.brewer;
+      return `<div class="history-item"><div class="history-top"><div><div class="history-title">${x.recipe.beanName} / ${x.recipe.dose}g : ${x.recipe.water}g</div><div class="history-meta">${brewer}・C5 Pro ${x.recipe.grind}・${x.recipe.temp}℃・落ち切り ${fmt(x.actualDrawdown)}</div></div><div class="score">${'★'.repeat(x.overall)}${'☆'.repeat(5-x.overall)}</div></div><div class="history-meta">苦味${x.taste.bitterness} / 酸味${x.taste.acidity} / 甘さ${x.taste.sweetness} / コク${x.taste.body} / 香り${x.taste.aroma}<br>${d}${x.memo?`・${x.memo}`:''}<br><b>次回:</b> ${x.advice.title}</div></div>`;
     }).join('');
   }
 
   function bind(){
     $$('.tab').forEach(b=>b.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('active',x===b));$$('.tabpage').forEach(p=>p.classList.toggle('active',p.id===b.dataset.tab));});
     ['beanName','roast','brewer','grinder','dose','water','temp','grind','pourEnd','drawdown'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateComputed();updateRecommendation();}));
-    $('#loadBaseline').onclick=()=>{applyRecipe(clone(D.baseline));state.steps=clone(D.baseline.steps);saveSteps();renderSteps();};
+    $('#baselineSelect').onchange=()=>renderBaseline($('#baselineSelect').value);
+    $('#loadBaseline').onclick=()=>loadPreset(currentPreset());
     $('#savePrefs').onclick=()=>{localStorage.setItem(LS.prefs,JSON.stringify(getPrefsFromUI()));updateRecommendation();};
     $('#applyRecommendation').onclick=()=>{if(state.recommendation?.changed.length)applyRecipe(state.recommendation.recipe);};
     $('#addStep').onclick=()=>{const last=state.steps.at(-1)?.time||0;state.steps.push({time:last+30,label:'新しい工程',target:''});saveSteps();renderSteps();};
-    $('#resetSteps').onclick=()=>{state.steps=clone(D.baseline.steps);saveSteps();renderSteps();};
+    $('#resetSteps').onclick=()=>{state.steps=clone(currentPreset().steps||[]);saveSteps();renderSteps();};
     $('#startTimer').onclick=startTimer;$('#pauseTimer').onclick=pauseTimer;$('#resetTimer').onclick=resetTimer;
     $('#saveBrew').onclick=saveBrew;
     $('#clearHistory').onclick=()=>{if(confirm('抽出履歴をすべて削除しますか？')){localStorage.removeItem(LS.history);renderHistory();}};
@@ -174,10 +208,11 @@
 
   function init(){
     initSelect($('#roast'),D.roasts,D.baseline.roast);initSelect($('#brewer'),D.brewers,D.baseline.brewer);initSelect($('#grinder'),D.grinders,D.baseline.grinder);
-    renderBaseline();renderPreferences();renderTaste();
+    initSelect($('#baselineSelect'),presets,state.activePresetId);
+    if(!presets.some(x=>x.id===state.activePresetId)) state.activePresetId=presets[0].id;
+    renderBaseline(state.activePresetId);renderPreferences();renderTaste();
     state.steps=loadSavedSteps()||clone(D.baseline.steps);renderSteps();
     applyRecipe(loadSavedRecipe()||clone(D.baseline),false);
-    $('#actualPourEnd').value=secToClock(state.recipe.pourEnd);$('#actualDrawdown').value=secToClock(state.recipe.drawdown);
     renderHistory();bind();updateRecommendation();
     if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
   }
