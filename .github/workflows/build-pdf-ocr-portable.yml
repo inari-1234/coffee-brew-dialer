@@ -15,6 +15,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Checkout diagnostic scripts
+        uses: actions/checkout@v4
+
       - name: Build and verify trimmed portable engine
         shell: pwsh
         run: |
@@ -131,6 +134,26 @@ jobs:
           ) | Set-Content -LiteralPath (Join-Path $dist 'ENGINE_BUILD_INFO.txt') -Encoding UTF8
 
           Write-Host 'Trimmed portable engine PASS'
+
+      - name: Verify no-PowerShell CMD paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'pdf-ocr-portable'
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'portable-test\00_ENGINE_CHECK_CMD.cmd') -Destination $root -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'portable-test\01_OCR_DRAGDROP_NO_POWERSHELL.cmd') -Destination $root -Force
+
+          cmd.exe /d /c ('"' + (Join-Path $root '00_ENGINE_CHECK_CMD.cmd') + '"')
+          if ($LASTEXITCODE -ne 0) { throw "CMD engine diagnostic failed: $LASTEXITCODE" }
+
+          $samplePdf = Join-Path $root 'cmd-sample.pdf'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/oschwartz10612/poppler-windows/master/sample.pdf' -OutFile $samplePdf -UseBasicParsing
+          cmd.exe /d /c ('"' + (Join-Path $root '01_OCR_DRAGDROP_NO_POWERSHELL.cmd') + '" "' + $samplePdf + '"')
+          if ($LASTEXITCODE -ne 0) { throw "CMD OCR fallback failed: $LASTEXITCODE" }
+
+          $result = Get-ChildItem -LiteralPath (Join-Path $root 'results') -Recurse -File -Filter 'OCR_RESULT.txt' | Select-Object -First 1
+          if (!$result -or $result.Length -le 0) { throw 'CMD OCR result missing or empty' }
+          Write-Host ('CMD fallback PASS: ' + $result.FullName)
 
       - name: Upload trimmed portable engine
         uses: actions/upload-artifact@v4
