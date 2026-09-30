@@ -183,6 +183,27 @@ jobs:
           if ((Get-Item $result).Length -le 0) { throw 'Unicode-root OCR result empty' }
           Write-Host ('Unicode-root relative-path OCR PASS: ' + $result)
 
+      - name: Verify PowerShell OCR from Japanese Windows path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $srcRoot = Join-Path $env:RUNNER_TEMP 'pdf-ocr-portable'
+          $jpRoot = Join-Path $env:RUNNER_TEMP '日本語 PowerShell OCR'
+          if (Test-Path $jpRoot) { Remove-Item -LiteralPath $jpRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $jpRoot | Out-Null
+          Copy-Item -LiteralPath (Join-Path $srcRoot 'tools') -Destination $jpRoot -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'portable-test\ocr_v032.ps1') -Destination (Join-Path $jpRoot 'ocr.ps1') -Force
+
+          $samplePdf = Join-Path $jpRoot '日本語 請求書.pdf'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/oschwartz10612/poppler-windows/master/sample.pdf' -OutFile $samplePdf -UseBasicParsing
+          & (Join-Path $jpRoot 'ocr.ps1') -PdfPath $samplePdf -NoOpen
+          if ($LASTEXITCODE -ne 0) { throw "PowerShell Unicode-root OCR failed: $LASTEXITCODE" }
+
+          $result = Join-Path $jpRoot 'results\OCR_RESULT_latest.txt'
+          if (!(Test-Path $result)) { throw 'PowerShell Unicode-root OCR result missing' }
+          if ((Get-Item $result).Length -le 0) { throw 'PowerShell Unicode-root OCR result empty' }
+          Write-Host ('PowerShell Unicode-root OCR PASS: ' + $result)
+
       - name: Upload trimmed portable engine
         uses: actions/upload-artifact@v4
         with:
