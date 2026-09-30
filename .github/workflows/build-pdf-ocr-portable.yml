@@ -155,6 +155,34 @@ jobs:
           if (!$result -or $result.Length -le 0) { throw 'CMD OCR result missing or empty' }
           Write-Host ('CMD fallback PASS: ' + $result.FullName)
 
+      - name: Verify Unicode-root OCR with ASCII-relative external paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $srcRoot = Join-Path $env:RUNNER_TEMP 'pdf-ocr-portable'
+          $jpRoot = Join-Path $env:RUNNER_TEMP '日本語 パス テスト'
+          if (Test-Path $jpRoot) { Remove-Item -LiteralPath $jpRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $jpRoot | Out-Null
+
+          Copy-Item -LiteralPath (Join-Path $srcRoot 'tools') -Destination $jpRoot -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'portable-test\01_OCR_RELATIVE_PATH_V032.cmd') -Destination (Join-Path $jpRoot '01_OCR_RELATIVE_PATH_V032.cmd') -Force
+
+          $samplePdf = Join-Path $jpRoot '日本語 名称 請求書.pdf'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/oschwartz10612/poppler-windows/master/sample.pdf' -OutFile $samplePdf -UseBasicParsing
+
+          Push-Location $jpRoot
+          try {
+            cmd.exe /d /c ('01_OCR_RELATIVE_PATH_V032.cmd "' + $samplePdf + '" < nul')
+            if ($LASTEXITCODE -ne 0) { throw "Unicode-root relative-path OCR failed: $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+          }
+
+          $result = Join-Path $jpRoot 'results\OCR_RESULT_latest.txt'
+          if (!(Test-Path $result)) { throw 'Unicode-root OCR result missing' }
+          if ((Get-Item $result).Length -le 0) { throw 'Unicode-root OCR result empty' }
+          Write-Host ('Unicode-root relative-path OCR PASS: ' + $result)
+
       - name: Upload trimmed portable engine
         uses: actions/upload-artifact@v4
         with:
