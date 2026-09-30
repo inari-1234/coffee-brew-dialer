@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Build portable engine bundle
+      - name: Build and verify trimmed portable engine
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -25,8 +25,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dist, $downloads | Out-Null
 
           $tessInstaller = Join-Path $downloads 'tesseract-ocr-w64-setup-5.5.3.20260724.exe'
-          $tessUrl = 'https://github.com/tesseract-ocr/tesseract/releases/download/5.5.3/tesseract-ocr-w64-setup-5.5.3.20260724.exe'
-          Invoke-WebRequest -Uri $tessUrl -OutFile $tessInstaller -UseBasicParsing
+          Invoke-WebRequest -Uri 'https://github.com/tesseract-ocr/tesseract/releases/download/5.5.3/tesseract-ocr-w64-setup-5.5.3.20260724.exe' -OutFile $tessInstaller -UseBasicParsing
           $tessHash = (Get-FileHash $tessInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($tessHash -ne 'bee9e3434bd94fd65387d9be28cd467a41f61b1275383b55b0f59a1331270ae4') {
             throw "Tesseract SHA256 mismatch: $tessHash"
@@ -35,20 +34,31 @@ jobs:
           $tessInstall = Join-Path $root 'Tesseract-OCR'
           $p = Start-Process -FilePath $tessInstaller -ArgumentList '/S',('/D=' + $tessInstall) -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Tesseract installer failed: $($p.ExitCode)" }
-          $tesseract = Join-Path $tessInstall 'tesseract.exe'
-          if (!(Test-Path $tesseract)) { throw "tesseract.exe not found after installer" }
+          if (!(Test-Path (Join-Path $tessInstall 'tesseract.exe'))) { throw 'tesseract.exe not found after installer' }
 
-          $tessData = Join-Path $tessInstall 'tessdata'
-          New-Item -ItemType Directory -Force -Path $tessData | Out-Null
-          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/jpn.traineddata' -OutFile (Join-Path $tessData 'jpn.traineddata') -UseBasicParsing
-          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata' -OutFile (Join-Path $tessData 'eng.traineddata') -UseBasicParsing
+          $tessDataSrc = Join-Path $tessInstall 'tessdata'
+          New-Item -ItemType Directory -Force -Path $tessDataSrc | Out-Null
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/jpn.traineddata' -OutFile (Join-Path $tessDataSrc 'jpn.traineddata') -UseBasicParsing
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata' -OutFile (Join-Path $tessDataSrc 'eng.traineddata') -UseBasicParsing
 
+          # Trim Tesseract to the runtime-only subset used by this tool.
           $tessOut = Join-Path $dist 'tesseract'
-          Copy-Item -LiteralPath $tessInstall -Destination $tessOut -Recurse -Force
+          $tessDataOut = Join-Path $tessOut 'tessdata'
+          New-Item -ItemType Directory -Force -Path $tessOut, $tessDataOut | Out-Null
+          Copy-Item -LiteralPath (Join-Path $tessInstall 'tesseract.exe') -Destination $tessOut -Force
+          Get-ChildItem -LiteralPath $tessInstall -File -Filter '*.dll' | Copy-Item -Destination $tessOut -Force
+          Copy-Item -LiteralPath (Join-Path $tessDataSrc 'jpn.traineddata') -Destination $tessDataOut -Force
+          Copy-Item -LiteralPath (Join-Path $tessDataSrc 'eng.traineddata') -Destination $tessDataOut -Force
+          if (Test-Path (Join-Path $tessDataSrc 'osd.traineddata')) {
+            Copy-Item -LiteralPath (Join-Path $tessDataSrc 'osd.traineddata') -Destination $tessDataOut -Force
+          }
+          foreach ($d in @('configs','tessconfigs')) {
+            $src = Join-Path $tessDataSrc $d
+            if (Test-Path $src) { Copy-Item -LiteralPath $src -Destination $tessDataOut -Recurse -Force }
+          }
 
           $popZip = Join-Path $downloads 'Release-26.09.0-0.zip'
-          $popUrl = 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip'
-          Invoke-WebRequest -Uri $popUrl -OutFile $popZip -UseBasicParsing
+          Invoke-WebRequest -Uri 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip' -OutFile $popZip -UseBasicParsing
           $popHash = (Get-FileHash $popZip -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($popHash -ne '7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0') {
             throw "Poppler SHA256 mismatch: $popHash"
@@ -57,14 +67,22 @@ jobs:
           Expand-Archive -LiteralPath $popZip -DestinationPath $popExtract -Force
           $library = Get-ChildItem -LiteralPath $popExtract -Directory -Recurse | Where-Object { $_.Name -eq 'Library' } | Select-Object -First 1
           if (!$library) { throw 'Poppler Library directory not found' }
-          Copy-Item -LiteralPath $library.FullName -Destination (Join-Path $dist 'poppler') -Recurse -Force
 
-          $pdftoppm = Get-ChildItem -LiteralPath (Join-Path $dist 'poppler') -Recurse -File -Filter 'pdftoppm.exe' | Select-Object -First 1
-          if (!$pdftoppm) { throw 'pdftoppm.exe not found' }
+          # Trim Poppler to runtime bin + share used by pdftoppm.
+          $popOut = Join-Path $dist 'poppler'
+          New-Item -ItemType Directory -Force -Path $popOut | Out-Null
+          Copy-Item -LiteralPath (Join-Path $library.FullName 'bin') -Destination $popOut -Recurse -Force
+          if (Test-Path (Join-Path $library.FullName 'share')) {
+            Copy-Item -LiteralPath (Join-Path $library.FullName 'share') -Destination $popOut -Recurse -Force
+          }
 
-          & (Join-Path $dist 'tesseract\tesseract.exe') --version
+          $tesseract = Join-Path $tessOut 'tesseract.exe'
+          $pdftoppm = Join-Path $popOut 'bin\pdftoppm.exe'
+          $tessData = Join-Path $tessOut 'tessdata'
+
+          & $tesseract --version
           if ($LASTEXITCODE -ne 0) { throw 'Tesseract version check failed' }
-          & $pdftoppm.FullName -v
+          & $pdftoppm -v
           if ($LASTEXITCODE -ne 0) { throw 'Poppler version check failed' }
 
           Add-Type -AssemblyName System.Drawing
@@ -77,7 +95,7 @@ jobs:
           $img.Save($testPng,[System.Drawing.Imaging.ImageFormat]::Png)
           $g.Dispose(); $font.Dispose(); $img.Dispose()
           $testOut = Join-Path $root 'ocr-test'
-          & (Join-Path $dist 'tesseract\tesseract.exe') $testPng $testOut -l eng --psm 7 --tessdata-dir (Join-Path $dist 'tesseract\tessdata')
+          & $tesseract $testPng $testOut -l eng --psm 7 --tessdata-dir $tessData
           if ($LASTEXITCODE -ne 0) { throw 'Tesseract smoke OCR failed' }
           $ocrText = Get-Content ($testOut + '.txt') -Raw
           if ($ocrText -notmatch 'OCR\s+TEST\s+123') { throw "Unexpected OCR smoke output: $ocrText" }
@@ -85,29 +103,39 @@ jobs:
           $samplePdf = Join-Path $root 'poppler-sample.pdf'
           Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/oschwartz10612/poppler-windows/master/sample.pdf' -OutFile $samplePdf -UseBasicParsing
           $renderPrefix = Join-Path $root 'render-test'
-          & $pdftoppm.FullName -f 1 -singlefile -png -r 72 $samplePdf $renderPrefix
+          & $pdftoppm -f 1 -singlefile -png -r 72 $samplePdf $renderPrefix
           if ($LASTEXITCODE -ne 0 -or !(Test-Path ($renderPrefix + '.png'))) { throw 'Poppler render smoke test failed' }
+
+          $jpnHash = (Get-FileHash (Join-Path $tessData 'jpn.traineddata') -Algorithm SHA256).Hash.ToLowerInvariant()
+          $engHash = (Get-FileHash (Join-Path $tessData 'eng.traineddata') -Algorithm SHA256).Hash.ToLowerInvariant()
+          $tessExeHash = (Get-FileHash $tesseract -Algorithm SHA256).Hash.ToLowerInvariant()
+          $pdfToPpmHash = (Get-FileHash $pdftoppm -Algorithm SHA256).Hash.ToLowerInvariant()
 
           @(
             'PDF OCR portable engine',
-            'Built on GitHub windows-latest',
+            'BuildResult=PASS',
+            'BuildEnvironment=GitHub windows-latest',
             'Tesseract=5.5.3.20260724',
             'TesseractInstallerSHA256=bee9e3434bd94fd65387d9be28cd467a41f61b1275383b55b0f59a1331270ae4',
+            ('TesseractExeSHA256=' + $tessExeHash),
+            ('JpnTraineddataSHA256=' + $jpnHash),
+            ('EngTraineddataSHA256=' + $engHash),
             'Poppler=26.09.0-0',
             'PopplerZipSHA256=7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0',
+            ('PdftoppmExeSHA256=' + $pdfToPpmHash),
             'Languages=jpn+eng',
+            'TrimmedRuntime=TESSERACT_DLLS+TESSDATA',
+            'TrimmedRuntime=POPPLER_BIN+SHARE',
             'SmokeTest=TESSERACT_PASS',
             'SmokeTest=POPPLER_PASS'
-          ) | Set-Content -LiteralPath (Join-Path $root 'ENGINE_BUILD_INFO.txt') -Encoding UTF8
+          ) | Set-Content -LiteralPath (Join-Path $dist 'ENGINE_BUILD_INFO.txt') -Encoding UTF8
 
-          Copy-Item -LiteralPath (Join-Path $root 'ENGINE_BUILD_INFO.txt') -Destination (Join-Path $dist 'ENGINE_BUILD_INFO.txt') -Force
+          Write-Host 'Trimmed portable engine PASS'
 
-          Write-Host "Portable engine build PASS"
-
-      - name: Upload portable engine
+      - name: Upload trimmed portable engine
         uses: actions/upload-artifact@v4
         with:
-          name: pdf-ocr-portable-engine-v03
+          name: pdf-ocr-portable-engine-v03-trimmed
           path: ${{ runner.temp }}/pdf-ocr-portable/tools
           if-no-files-found: error
           compression-level: 6
